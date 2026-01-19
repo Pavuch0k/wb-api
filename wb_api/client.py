@@ -150,7 +150,8 @@ class WBAPIClient:
         Returns:
             Словарь с информацией о статусе подключения
         """
-        url = f"{self.BASE_URL.replace('/supplier', '')}/ping"
+        # Правильный URL для статистики: https://statistics-api.wildberries.ru/ping
+        url = "https://statistics-api.wildberries.ru/ping"
         response = requests.get(url, headers=self.headers, timeout=10)
         response.raise_for_status()
         return response.json()

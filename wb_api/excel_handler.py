@@ -1,8 +1,11 @@
 """Модуль для работы с Excel таблицами"""
 import pandas as pd
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class ExcelHandler:
@@ -55,7 +58,34 @@ class ExcelHandler:
         Returns:
             DataFrame с данными
         """
-        return pd.read_excel(self.file_path, engine='openpyxl')
+        try:
+            # Проверяем, существует ли файл и является ли он валидным Excel файлом
+            if not os.path.exists(self.file_path):
+                logger.warning(f"Файл {self.file_path} не существует, создаю новый")
+                self._ensure_file_exists()
+                return pd.read_excel(self.file_path, engine='openpyxl')
+            
+            # Проверяем размер файла (пустой файл может быть поврежден)
+            if os.path.getsize(self.file_path) == 0:
+                logger.warning(f"Файл {self.file_path} пустой, пересоздаю")
+                os.remove(self.file_path)
+                self._ensure_file_exists()
+                return pd.read_excel(self.file_path, engine='openpyxl')
+            
+            # Пытаемся прочитать файл
+            return pd.read_excel(self.file_path, engine='openpyxl')
+            
+        except Exception as e:
+            logger.error(f"Ошибка при чтении Excel файла: {str(e)}")
+            # Если файл поврежден, пересоздаем его
+            logger.info(f"Пересоздаю файл {self.file_path}")
+            if os.path.exists(self.file_path):
+                try:
+                    os.remove(self.file_path)
+                except:
+                    pass
+            self._ensure_file_exists()
+            return pd.read_excel(self.file_path, engine='openpyxl')
     
     def write_data(self, df: pd.DataFrame):
         """
