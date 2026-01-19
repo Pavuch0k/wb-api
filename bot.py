@@ -106,8 +106,8 @@ class WBBot:
             # Получаем статистику продаж
             sales_data = self.wb_client.get_statistics(date_from_str, date_to_str)
             
-            # Получаем остатки
-            stocks_data = self.wb_client.get_stocks()
+            # Получаем остатки (требуется dateFrom)
+            stocks_data = self.wb_client.get_stocks(date_from_str)
             
             # Получаем заказы
             orders_data = self.wb_client.get_orders(date_from_str, date_to_str)

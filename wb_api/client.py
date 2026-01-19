@@ -155,20 +155,17 @@ class WBAPIClient:
         response.raise_for_status()
         return response.json()
     
-    def get_stocks(self, date_from: Optional[str] = None) -> List[Dict]:
+    def get_stocks(self, date_from: str) -> List[Dict]:
         """
-        Получает информацию об остатках товаров
+        Получает информацию об остатках товаров на указанную дату
         
         Args:
-            date_from: Опционально - дата начала периода (формат: YYYY-MM-DD)
-                      Если не указана, возвращаются текущие остатки
+            date_from: Дата начала периода (формат: YYYY-MM-DD) - обязательный параметр
         
         Returns:
             Список словарей с информацией об остатках
         """
-        params = None
-        if date_from:
-            params = {"dateFrom": date_from}
+        params = {"dateFrom": date_from}
         return self._make_request("stocks", params)
     
     def get_orders(self, date_from: str, date_to: str) -> List[Dict]:
