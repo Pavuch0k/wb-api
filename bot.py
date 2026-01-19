@@ -1,6 +1,7 @@
 """Telegram бот для парсинга данных Wildberries"""
 import os
 import logging
+import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from telegram import Update
@@ -141,9 +142,35 @@ class WBBot:
             
         except ValueError as e:
             await update.message.reply_text(f"❌ Ошибка формата даты: {str(e)}")
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                error_msg = (
+                    "⚠️ Превышен лимит запросов к API Wildberries.\n\n"
+                    "Попробуйте позже или уменьшите частоту запросов.\n"
+                    "Бот автоматически повторит попытку с задержкой."
+                )
+            elif e.response.status_code == 401:
+                error_msg = "❌ Ошибка авторизации. Проверьте API ключ в .env файле."
+            elif e.response.status_code == 403:
+                error_msg = "❌ Доступ запрещен. Проверьте права доступа API ключа."
+            else:
+                error_msg = f"❌ HTTP ошибка {e.response.status_code}: {str(e)}"
+            
+            logger.error(f"HTTP ошибка при парсинге: {str(e)}", exc_info=True)
+            await update.message.reply_text(error_msg)
+        except requests.exceptions.Timeout:
+            error_msg = (
+                "⏱️ Превышено время ожидания ответа от API.\n"
+                "Попробуйте позже или проверьте интернет-соединение."
+            )
+            logger.error("Таймаут при запросе к API", exc_info=True)
+            await update.message.reply_text(error_msg)
         except Exception as e:
             logger.error(f"Ошибка при парсинге: {str(e)}", exc_info=True)
-            await update.message.reply_text(f"❌ Произошла ошибка: {str(e)}")
+            await update.message.reply_text(
+                f"❌ Произошла ошибка: {str(e)}\n\n"
+                f"Проверьте логи для подробностей."
+            )
     
     def run(self):
         """Запускает бота"""

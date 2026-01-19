@@ -1,8 +1,12 @@
 """Клиент для работы с API Wildberries"""
 import requests
 import os
+import time
+import logging
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 class WBAPIClient:
@@ -26,21 +30,65 @@ class WBAPIClient:
             "Content-Type": "application/json"
         }
     
-    def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
+    def _make_request(self, endpoint: str, params: Optional[Dict] = None, max_retries: int = 5) -> Dict:
         """
-        Выполняет запрос к API
+        Выполняет запрос к API с повторными попытками при ошибках
         
         Args:
             endpoint: Конечная точка API
             params: Параметры запроса
+            max_retries: Максимальное количество повторных попыток
             
         Returns:
             Ответ от API в виде словаря
         """
         url = f"{self.BASE_URL}/{endpoint}"
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        return response.json()
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, headers=self.headers, params=params, timeout=30)
+                
+                # Обработка ошибки 429 (Too Many Requests)
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get('Retry-After', 60))
+                    wait_time = retry_after if attempt < max_retries - 1 else retry_after
+                    
+                    logger.warning(
+                        f"Получен код 429 (Too Many Requests). "
+                        f"Ожидание {wait_time} секунд перед повторной попыткой "
+                        f"({attempt + 1}/{max_retries})"
+                    )
+                    
+                    if attempt < max_retries - 1:
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        response.raise_for_status()
+                
+                # Обработка других ошибок
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.exceptions.Timeout:
+                wait_time = (2 ** attempt) * 5  # Экспоненциальная задержка: 5, 10, 20, 40, 80 сек
+                if attempt < max_retries - 1:
+                    logger.warning(f"Таймаут запроса. Повтор через {wait_time} сек ({attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise
+            
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 5
+                    logger.warning(f"Ошибка запроса: {str(e)}. Повтор через {wait_time} сек ({attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise
+        
+        # Если все попытки исчерпаны
+        raise requests.exceptions.RequestException(f"Не удалось выполнить запрос после {max_retries} попыток")
     
     def get_statistics(self, date_from: str, date_to: str) -> List[Dict]:
         """
