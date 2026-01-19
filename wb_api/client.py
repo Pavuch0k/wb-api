@@ -51,19 +51,23 @@ class WBAPIClient:
                 # Обработка ошибки 429 (Too Many Requests)
                 if response.status_code == 429:
                     retry_after = int(response.headers.get('Retry-After', 60))
-                    wait_time = retry_after if attempt < max_retries - 1 else retry_after
                     
                     logger.warning(
                         f"Получен код 429 (Too Many Requests). "
-                        f"Ожидание {wait_time} секунд перед повторной попыткой "
+                        f"Ожидание {retry_after} секунд перед повторной попыткой "
                         f"({attempt + 1}/{max_retries})"
                     )
                     
                     if attempt < max_retries - 1:
-                        time.sleep(wait_time)
+                        time.sleep(retry_after)
                         continue
                     else:
-                        response.raise_for_status()
+                        # Если все попытки исчерпаны, выбрасываем исключение
+                        raise requests.exceptions.HTTPError(
+                            f"429 Client Error: Too Many Requests после {max_retries} попыток. "
+                            f"Попробуйте позже.",
+                            response=response
+                        )
                 
                 # Обработка других ошибок
                 response.raise_for_status()

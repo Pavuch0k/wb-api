@@ -1,6 +1,7 @@
 """Telegram бот для парсинга данных Wildberries"""
 import os
 import logging
+import asyncio
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -175,7 +176,11 @@ class WBBot:
     def run(self):
         """Запускает бота"""
         logger.info("Запуск бота...")
-        self.application.run_polling(allowed_updates=Update.ALL_TYPES)
+        self.application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            close_loop=False
+        )
 
 
 if __name__ == "__main__":
