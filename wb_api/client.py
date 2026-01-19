@@ -25,12 +25,14 @@ class WBAPIClient:
         if not self.api_key:
             raise ValueError("API ключ не найден. Укажите его в параметре или в переменной окружения WB_API_KEY")
         
+        # WB API использует токен напрямую в заголовке Authorization
         self.headers = {
             "Authorization": self.api_key,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
     
-    def _make_request(self, endpoint: str, params: Optional[Dict] = None, max_retries: int = 5) -> Dict:
+    def _make_request(self, endpoint: str, params: Optional[Dict] = None, max_retries: int = 5) -> List[Dict]:
         """
         Выполняет запрос к API с повторными попытками при ошибках
         
@@ -69,14 +71,44 @@ class WBAPIClient:
                             response=response
                         )
                 
+                # Обработка ошибки 400 (Bad Request) - не повторяем, сразу выбрасываем
+                if response.status_code == 400:
+                    error_text = response.text
+                    logger.error(f"400 Bad Request для {endpoint}: {error_text}")
+                    raise requests.exceptions.HTTPError(
+                        f"400 Bad Request: {error_text}",
+                        response=response
+                    )
+                
                 # Обработка других ошибок
                 response.raise_for_status()
-                return response.json()
+                
+                # WB API возвращает список или словарь
+                result = response.json()
+                if isinstance(result, list):
+                    return result
+                elif isinstance(result, dict):
+                    return [result]
+                else:
+                    return []
                 
             except requests.exceptions.Timeout:
                 wait_time = (2 ** attempt) * 5  # Экспоненциальная задержка: 5, 10, 20, 40, 80 сек
                 if attempt < max_retries - 1:
                     logger.warning(f"Таймаут запроса. Повтор через {wait_time} сек ({attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise
+            
+            except requests.exceptions.HTTPError as e:
+                # Ошибки 400 и 401 не повторяем
+                if e.response.status_code in (400, 401, 403):
+                    raise
+                # Для других HTTP ошибок повторяем
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 5
+                    logger.warning(f"HTTP ошибка {e.response.status_code}: {str(e)}. Повтор через {wait_time} сек ({attempt + 1}/{max_retries})")
                     time.sleep(wait_time)
                     continue
                 else:
@@ -111,14 +143,33 @@ class WBAPIClient:
         }
         return self._make_request("sales", params)
     
-    def get_stocks(self) -> List[Dict]:
+    def ping(self) -> Dict:
+        """
+        Проверяет подключение и валидность токена
+        
+        Returns:
+            Словарь с информацией о статусе подключения
+        """
+        url = f"{self.BASE_URL.replace('/supplier', '')}/ping"
+        response = requests.get(url, headers=self.headers, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    
+    def get_stocks(self, date_from: Optional[str] = None) -> List[Dict]:
         """
         Получает информацию об остатках товаров
+        
+        Args:
+            date_from: Опционально - дата начала периода (формат: YYYY-MM-DD)
+                      Если не указана, возвращаются текущие остатки
         
         Returns:
             Список словарей с информацией об остатках
         """
-        return self._make_request("stocks")
+        params = None
+        if date_from:
+            params = {"dateFrom": date_from}
+        return self._make_request("stocks", params)
     
     def get_orders(self, date_from: str, date_to: str) -> List[Dict]:
         """
